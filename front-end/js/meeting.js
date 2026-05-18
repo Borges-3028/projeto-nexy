@@ -244,31 +244,51 @@ async function enviarMsg() {
 
     adicionarMsg(nomeUsuario, msg);
 
-    if (msg.startsWith("@nexy")) {
+    if (msg.toLowerCase().startsWith("@nexy")) {
 
-        const pergunta = msg.replace("@nexy", "").trim();
+        const pergunta = msg.replace(/@nexy/i, "").trim();
 
         try {
+
             const res = await fetch("/chat", {
                 method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({ msg: pergunta })
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    msg: pergunta
+                })
             });
 
             const data = await res.json();
 
+            // 🔥 MOSTRA PARA VOCÊ
+            adicionarMsg("🤖 Nexy IA", data.resposta);
+
+            // 🔥 ENVIA PARA OS OUTROS DA SALA
             socket.emit("chat", {
                 room,
                 nome: "🤖 Nexy IA",
                 msg: data.resposta
             });
 
-        } catch {
-            adicionarMsg("🤖 Nexy IA", "Erro ao responder.");
+        } catch (erro) {
+
+            console.error(erro);
+
+            adicionarMsg(
+                "🤖 Nexy IA",
+                "Erro ao responder."
+            );
         }
 
     } else {
-        socket.emit("chat", { room, nome: nomeUsuario, msg });
+
+        socket.emit("chat", {
+            room,
+            nome: nomeUsuario,
+            msg
+        });
     }
 
     input.value = "";

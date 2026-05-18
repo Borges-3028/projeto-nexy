@@ -4,6 +4,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import requests
 import mysql.connector
 import os
+from dotenv import load_dotenv
 import random
 import string
 from html import escape
@@ -16,7 +17,10 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 socketio = SocketIO(app, cors_allowed_origins="*")
 
+load_dotenv()
+
 NGROK_URL = os.getenv("NGROK_URL")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 
 def get_db():
@@ -1045,11 +1049,10 @@ def relatorio_reunioes():
 def chat_api():
     try:
         data = request.json or {}
-        msg = data.get("msg", "").strip().lower()
+        msg = data.get("msg", "").strip()
 
-        msg = msg.replace("oq", "o que")
-        msg = msg.replace("q ", "que ")
-        msg = msg.replace("vc", "você")
+        if not msg:
+            return jsonify({"resposta": "Digite uma pergunta."})
 
         respostas_fixas = {
             "webrtc": "WebRTC é uma tecnologia que permite comunicação em tempo real com áudio, vídeo e dados diretamente no navegador.",
@@ -1059,41 +1062,63 @@ def chat_api():
             "nexy": "Nexy é uma plataforma de videoconferência com inteligência artificial integrada."
         }
 
+        msg_normalizada = msg.lower()
+        msg_normalizada = msg_normalizada.replace("oq", "o que")
+        msg_normalizada = msg_normalizada.replace("q ", "que ")
+        msg_normalizada = msg_normalizada.replace("vc", "você")
+
         for chave in respostas_fixas:
-            if chave in msg:
+            if chave in msg_normalizada:
                 return jsonify({"resposta": respostas_fixas[chave]})
 
+        if not GROQ_API_KEY:
+            return jsonify({
+                "resposta": "Chave da Groq não configurada. Crie o arquivo .env com GROQ_API_KEY=sua_chave."
+            })
+
+        url = "https://api.groq.com/openai/v1/chat/completions"
+
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "model": "llama-3.1-8b-instant",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "Você é a IA da plataforma NEXY. Responda sempre em português do Brasil, de forma simples, direta e útil. Evite respostas longas."
+                },
+                {
+                    "role": "user",
+                    "content": msg
+                }
+            ],
+            "temperature": 0.4,
+            "max_tokens": 250
+        }
+
         r = requests.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": "phi",
-                "prompt": f"Responda em português do Brasil, de forma simples e direta: {msg}",
-                "stream": False
-            },
-            timeout=30
+            url,
+            headers=headers,
+            json=payload,
+            timeout=20
         )
 
-        resposta = r.json().get("response", "").strip()
+        if r.status_code != 200:
+            print("ERRO GROQ:", r.status_code, r.text)
+            return jsonify({
+                "resposta": "Não consegui acessar a IA agora. Verifique a chave da Groq."
+            })
 
-        palavras_ingles = [" is ", " are ", " the ", " and ", "with", "this", "that"]
-
-        if any(p in resposta.lower() for p in palavras_ingles):
-            resposta = "Não consegui responder corretamente em português. Tente reformular a pergunta."
-
-        lixo = ["Pergunta", "Resposta", "Assistant", "Hello"]
-
-        for palavra in lixo:
-            resposta = resposta.replace(palavra, "")
-
-        if len(resposta) > 300:
-            resposta = resposta[:300] + "..."
+        resposta = r.json()["choices"][0]["message"]["content"].strip()
 
         return jsonify({"resposta": resposta})
 
     except Exception as e:
         print("ERRO CHAT:", e)
-        return jsonify({"resposta": "Erro no servidor de IA"})
-
+        return jsonify({"resposta": "Erro no servidor de IA."})
 
 @socketio.on("join")
 def on_join(data):
