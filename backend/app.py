@@ -1181,7 +1181,11 @@ def chat(data):
 
 @socketio.on("disconnect")
 def handle_disconnect():
-    emit("user-disconnected", request.sid, broadcast=True)
+    rooms = socketio.server.rooms(request.sid)
+
+    for room in rooms:
+        if room != request.sid:
+            emit("user-disconnected", request.sid, room=room)
 
 
 if __name__ == "__main__":

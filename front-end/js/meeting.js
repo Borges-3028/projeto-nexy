@@ -11,47 +11,51 @@ let peers = {};
 window.localStream = null;
 
 const config = {
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" }
+    ]
 };
 
 async function iniciar() {
-
     try {
         window.localStream = await navigator.mediaDevices.getUserMedia({
             video: true,
             audio: true
         });
 
-        document.getElementById("localVideo").srcObject = window.localStream;
+        const localVideo = document.getElementById("localVideo");
+        localVideo.srcObject = window.localStream;
 
         socket.emit("join", { room, nome: nomeUsuario });
 
     } catch (erro) {
-        alert("Permita câmera e microfone!");
+        console.error("Erro ao acessar câmera/microfone:", erro);
+        alert("Erro ao acessar câmera ou microfone. Verifique permissões do navegador.");
     }
 }
 
 function criarPeer(id) {
-
     if (peers[id]) {
         return peers[id];
     }
 
     const pc = new RTCPeerConnection(config);
 
-    window.localStream.getTracks().forEach(track => {
-        pc.addTrack(track, window.localStream);
-    });
+    if (window.localStream) {
+        window.localStream.getTracks().forEach(track => {
+            pc.addTrack(track, window.localStream);
+        });
+    }
 
     pc.ontrack = (event) => {
-
         let container = document.getElementById("user_" + id);
 
         if (!container) {
-
             container = document.createElement("div");
             container.id = "user_" + id;
-            container.classList.add("video-wrapper"); // 🔥 organização
+            container.classList.add("video-wrapper");
 
             const video = document.createElement("video");
             video.autoplay = true;
@@ -76,7 +80,6 @@ function criarPeer(id) {
         }
     };
 
-    // 🔥 REMOVE AUTOMATICAMENTE SE DESCONECTAR
     pc.onconnectionstatechange = () => {
         if (
             pc.connectionState === "disconnected" ||
@@ -94,9 +97,7 @@ function criarPeer(id) {
 /* ================= SOCKET ================= */
 
 socket.on("all_users", async (data) => {
-
     for (let id of data.users) {
-
         if (id === socket.id) continue;
 
         const pc = criarPeer(id);
@@ -109,7 +110,6 @@ socket.on("all_users", async (data) => {
 });
 
 socket.on("offer", async ({ from, offer }) => {
-
     let pc = peers[from];
 
     if (!pc) {
@@ -125,7 +125,6 @@ socket.on("offer", async ({ from, offer }) => {
 });
 
 socket.on("answer", async ({ from, answer }) => {
-
     const pc = peers[from];
     if (!pc) return;
 
@@ -133,7 +132,6 @@ socket.on("answer", async ({ from, answer }) => {
 });
 
 socket.on("ice", async ({ from, candidate }) => {
-
     const pc = peers[from];
     if (!pc) return;
 
@@ -145,34 +143,32 @@ socket.on("ice", async ({ from, candidate }) => {
 });
 
 socket.on("user_joined", (data) => {
-
     const hora = new Date().toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit'
+        hour: "2-digit",
+        minute: "2-digit"
     });
 
     adicionarSistema(`${data.nome} entrou na reunião às ${hora}`);
 });
+
 socket.on("chat", (data) => {
     adicionarMsg(data.nome, data.msg);
 });
 
-/* 🔥 CORRIGIDO AQUI */
 socket.on("user-disconnected", (id) => {
     removeVideo(id);
 });
 
-/* ================= REMOÇÃO CORRETA ================= */
+/* ================= REMOÇÃO ================= */
 
-function removeVideo(id){
-
+function removeVideo(id) {
     const container = document.getElementById("user_" + id);
 
-    if(container){
+    if (container) {
         container.remove();
     }
 
-    if(peers[id]){
+    if (peers[id]) {
         peers[id].close();
         delete peers[id];
     }
@@ -180,18 +176,16 @@ function removeVideo(id){
 
 /* ================= FUNÇÕES GERAIS ================= */
 
-function encerrarReuniao(){
+function encerrarReuniao() {
     Object.values(peers).forEach(pc => pc.close());
     socket.disconnect();
     window.location.href = "/dashboard";
 }
 
 function adicionarMsg(nome, msg) {
-
     const box = document.getElementById("messages");
     if (!box) return;
 
-    // 🔥 GARANTE QUE SEMPRE TEM NOME
     const nomeFinal = nome || "Usuário";
 
     const div = document.createElement("div");
@@ -219,12 +213,12 @@ function adicionarMsg(nome, msg) {
     }
 
     const hora = new Date().toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit'
+        hour: "2-digit",
+        minute: "2-digit"
     });
 
     bubble.innerHTML = `
-        <b>${nomeFinal}</b> 
+        <b>${nomeFinal}</b>
         <span style="font-size:10px;opacity:0.6;">${hora}</span><br>
         ${msg}
     `;
@@ -236,7 +230,6 @@ function adicionarMsg(nome, msg) {
 }
 
 async function enviarMsg() {
-    
     const input = document.getElementById("msgInput");
     const msg = input.value;
 
@@ -245,11 +238,9 @@ async function enviarMsg() {
     adicionarMsg(nomeUsuario, msg);
 
     if (msg.toLowerCase().startsWith("@nexy")) {
-
         const pergunta = msg.replace(/@nexy/i, "").trim();
 
         try {
-
             const res = await fetch("/chat", {
                 method: "POST",
                 headers: {
@@ -262,10 +253,8 @@ async function enviarMsg() {
 
             const data = await res.json();
 
-            // 🔥 MOSTRA PARA VOCÊ
             adicionarMsg("🤖 Nexy IA", data.resposta);
 
-            // 🔥 ENVIA PARA OS OUTROS DA SALA
             socket.emit("chat", {
                 room,
                 nome: "🤖 Nexy IA",
@@ -273,17 +262,11 @@ async function enviarMsg() {
             });
 
         } catch (erro) {
-
             console.error(erro);
-
-            adicionarMsg(
-                "🤖 Nexy IA",
-                "Erro ao responder."
-            );
+            adicionarMsg("🤖 Nexy IA", "Erro ao responder.");
         }
 
     } else {
-
         socket.emit("chat", {
             room,
             nome: nomeUsuario,
@@ -295,7 +278,6 @@ async function enviarMsg() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-
     const btn = document.getElementById("btnEnviar");
     const input = document.getElementById("msgInput");
 
@@ -303,7 +285,6 @@ document.addEventListener("DOMContentLoaded", () => {
         btn.addEventListener("click", enviarMsg);
     }
 
-    // 🔥 enviar com ENTER também
     if (input) {
         input.addEventListener("keypress", (e) => {
             if (e.key === "Enter") {
@@ -311,11 +292,9 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     }
-
 });
 
-function adicionarSistema(msg){
-
+function adicionarSistema(msg) {
     const box = document.getElementById("messages");
     if (!box) return;
 
@@ -329,54 +308,43 @@ function adicionarSistema(msg){
     div.innerText = msg;
 
     box.appendChild(div);
-
     box.scrollTop = box.scrollHeight;
 }
 
-/* ================= COMPARTILHAR TELA ================= */
+/* ================= COMPARTILHAR TELA CORRIGIDO ================= */
 
 async function compartilharTela() {
     try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
-            video: true
+            video: true,
+            audio: false
         });
 
         const screenTrack = screenStream.getVideoTracks()[0];
 
-        // 🔥 ATUALIZA STREAM GLOBAL
-        window.localStream = screenStream;
-
-        // troca vídeo em todos os peers
         Object.values(peers).forEach(pc => {
-            const sender = pc.getSenders().find(s => s.track.kind === "video");
+            const sender = pc.getSenders().find(s => s.track && s.track.kind === "video");
+
             if (sender) {
                 sender.replaceTrack(screenTrack);
             }
         });
 
-        document.getElementById("localVideo").srcObject = screenStream;
+        const localVideo = document.getElementById("localVideo");
+        localVideo.srcObject = screenStream;
 
-        // 🔥 quando parar de compartilhar
         screenTrack.onended = async () => {
-
-            const camStream = await navigator.mediaDevices.getUserMedia({
-                video: true,
-                audio: true
-            });
-
-            const camTrack = camStream.getVideoTracks()[0];
-
-            // 🔥 VOLTA PARA CAMERA
-            window.localStream = camStream;
+            const cameraTrack = window.localStream?.getVideoTracks()[0];
 
             Object.values(peers).forEach(pc => {
-                const sender = pc.getSenders().find(s => s.track.kind === "video");
-                if (sender) {
-                    sender.replaceTrack(camTrack);
+                const sender = pc.getSenders().find(s => s.track && s.track.kind === "video");
+
+                if (sender && cameraTrack) {
+                    sender.replaceTrack(cameraTrack);
                 }
             });
 
-            document.getElementById("localVideo").srcObject = camStream;
+            localVideo.srcObject = window.localStream;
         };
 
     } catch (err) {
@@ -391,10 +359,8 @@ let recorder;
 let gravando = false;
 
 async function iniciarGravacao() {
-
     if (gravando) return;
 
-    // 🔥 USA SEMPRE O STREAM ATUAL
     const stream = window.localStream;
 
     if (!stream) {
@@ -421,18 +387,14 @@ async function iniciarGravacao() {
     recorder.start();
     gravando = true;
 
-    // 🔥 STATUS VISUAL
     const status = document.getElementById("recStatus");
     if (status) {
         status.style.display = "block";
     }
 }
 
-/* ================= PARAR GRAVAÇÃO ================= */
-
-function pararGravacao(){
-
-    if(recorder && gravando){
+function pararGravacao() {
+    if (recorder && gravando) {
         recorder.stop();
         gravando = false;
 
@@ -450,6 +412,7 @@ function pararGravacao(){
         }
     }
 }
+
 /* ================= INIT ================= */
 
 window.onload = iniciar;
